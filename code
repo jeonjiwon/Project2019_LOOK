@@ -1,1 +1,206 @@
+#include <opencv2/core.hpp>      // Mat 객체를 사용하기 위한 코어 모듈.
+#include <opencv2/video.hpp>   // 비디오 디바이스에 접근하여 영상을 가져오기에 필요한 모듈.
+#include <opencv2/highgui.hpp>   // 인터페이스를 위한 모듈.
+#include <opencv2/imgproc.hpp>   // cvtColor() 함수는 Image Processing 모듈에 포함되어 있다.
+#include <iostream>            // 콘솔 입출력을 위한 iostream 헤더파일.
+#include "opencv2/opencv.hpp"
+#include <time.h>
+#include <string.h>
+#include <opencv2/videoio.hpp>
+
+using namespace cv;
+using namespace std;
+
+#include <stdio.h>
+
+#define TEN_SEC 24
+#define FONTFACE FONT_HERSHEY_COMPLEX_SMALL
+#define DELAY 30
+#define OUTPUTTIME "%Y.%m.%d.%H.%M.%S"
+#define VIDEOFOEMAT ".avi"
+#define EXTEN 'X', 'V', 'I', 'D'
+#define nTh 50
+
+const string currentDateTime() {
+
+	time_t     now = time(NULL);
+	struct tm  t;
+	char       buf[80];
+	localtime_s(&t, &now);
+	strftime(buf, sizeof(buf), OUTPUTTIME, &t);
+
+	return buf;
+}
+
+
+
+// Color conversion function
+cv::Mat rgb2gray(cv::Mat img) {
+	cv::Mat gray;
+	cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+	return gray;
+}
+
+
+// Binarization function
+cv::Mat binarization(cv::Mat img, const int THRESHOLD) {
+	// Get image size
+	int w = img.cols;      // Image width
+	int h = img.rows;      // Image Height
+	int c = img.channels();   // Image channels (gray: 1 / RGB: 3)
+
+							  // Create empty image (size: input image / channels: gray)
+	cv::Mat img_bin(cv::Size(w, h), CV_8UC1);
+
+	for (int i = 0; i < h; i++) {
+		for (int j = 0; j < w; j++) {
+			int gray_pixel = 0;
+
+			if (c == 1)
+				gray_pixel = img.at<uchar>(i, j);
+			else {
+				unsigned char b = img.at<cv::Vec3b>(i, j)[0];
+				unsigned char g = img.at<cv::Vec3b>(i, j)[1];
+				unsigned char r = img.at<cv::Vec3b>(i, j)[2];
+				gray_pixel = (b + g + r) / 3;
+			}
+
+			if (gray_pixel >= THRESHOLD)
+				img_bin.at<uchar>(i, j) = 255;
+			else
+				img_bin.at<uchar>(i, j) = 0;
+		}
+	}
+
+	return img_bin;
+}
+
+
+int main() {
+
+	int timecnt = 0;
+	int fourcc = VideoWriter::fourcc(EXTEN);
+	int record = false;
+	float alpha = 0.02;
+	int frameNum = -1;
+	Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5)); //MORPH_ELLIPSE
+	Mat frame, grayImage, grayImage2;
+	Mat avgImage, diffImage, mask;
+	Mat last_frame, moveImage;
+	VideoWriter outputVideo;
+	
+
+	// Open camera
+	cv::VideoCapture cap(0);
+
+	if (!cap.isOpened()) {
+		printf("Failed to open camera.\n");
+		return -1;
+	}
+
+	// Set camera properties (ex. resolution)
+	const int WIDTH = 320;
+	const int HEIGHT = 240;
+	//cap.set(CV_CAP_PROP_FRAME_WIDTH, WIDTH);
+	//cap.set(CV_CAP_PROP_FRAME_HEIGHT, HEIGHT);
+
+
+	Size size = Size((int)WIDTH, (int)HEIGHT);
+
+	// Start processing
+	while (1) {
+		// Get image frame from webcam
+		cv::Mat img;
+		bool ret = cap.read(img);
+		if (!ret) {
+			// Failed to read image
+			printf("Failed to read image from camera.\n");
+			break;
+		}
+
+
+		/**************** Image processing ****************/
+
+		// convert gray scale
+		cv::Mat gray = rgb2gray(img);
+
+		// binarization
+		const int THRESHOLD = 128;
+		cv::Mat img_bin = binarization(gray, THRESHOLD);
+
+		/**************************************************/
+
+
+
+		// Show images
+		cv::imshow("Original image", img);
+		cv::imshow("Gray image", gray);
+		cv::imshow("Binarization", img_bin);
+
+
+		string text = currentDateTime();
+
+		cap >> frame;
+		cap >> last_frame;
+
+		if (frame.empty()) break;
+
+		cvtColor(frame, grayImage, COLOR_BGR2GRAY);
+		cvtColor(last_frame, grayImage2, COLOR_BGR2GRAY);
+		GaussianBlur(grayImage, grayImage, Size(5, 5), 0.5);
+		avgImage = grayImage2;
+		absdiff(grayImage, avgImage, diffImage);
+		threshold(diffImage, mask, nTh, 255, THRESH_BINARY);
+
+		diffImage.setTo(0);
+
+		int movecnt = countNonZero(mask);
+		imshow("mask", mask);
+		putText(frame, text, Point(20, cap.get(CAP_PROP_FRAME_HEIGHT) - 20), FONTFACE, 1, Scalar(255, 255, 255));
+
+
+		//video record
+		/*if (movecnt >= 5000 && record == false) {
+			record = !record;
+			cout << movecnt << endl;
+			outputVideo.open(text + VIDEOFOEMAT, fourcc, 24, size, true);
+			cout << text + " start record\n";
+		}
+
+		if (record) {
+			timecnt++;
+			if (timecnt == TEN_SEC) {
+				record = !record;
+				timecnt = 0;
+				outputVideo.release();
+				cout << text + " finish record\n";
+
+			}
+			outputVideo << frame;
+		}
+		if (waitKey(DELAY) == 27) break;*/
+
+
+		// Wait until the image is drawn
+		char key = cv::waitKey(1);
+
+
+		if (key == 'q')   // Quit if keyboard input is 'q'
+			break;
+
+		// Release for images that will not be used
+		gray.release();
+		img_bin.release();
+	}
+
+
+	// Close window showing image
+	cv::destroyAllWindows();
+
+	// Close camera
+	cap.release();
+
+	return 0;
+}
+
 
