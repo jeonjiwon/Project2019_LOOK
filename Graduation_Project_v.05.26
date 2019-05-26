@@ -52,10 +52,10 @@ int main() {
 	waitKey(100);
 
 	Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5)); //MORPH_ELLIPSE
-	Mat frame, next_frame;										// 영상 촬영 및 움직임 감지를 위한 프레임 객체 선언
+	Mat frame, next_frame;		// 영상 촬영 및 움직임 감지를 위한 프레임 객체 선언
 	Mat grayImage1, grayImage2;
 	Mat diffImage1, resultImage1;
-	Mat prev_frame, post_frame;									// 물체의 변화 감지를 위한 프레임 객체 선언
+	Mat prev_frame, post_frame;	// 물체의 변화 감지를 위한 프레임 객체 선언
 	Mat prev_grayframe, post_grayframe;
 	Mat diffImage2, resultImage2;
 	Mat temp;
@@ -80,10 +80,10 @@ int main() {
 			break;
 		
 		// 움직임 감지를 확인하기 위한 영상처리 과정
-		cvtColor(frame, grayImage1, COLOR_BGR2GRAY);							// 그레이스케일로 변환
-		cvtColor(next_frame, grayImage2, COLOR_BGR2GRAY);						// 그레이스케일로 변환
-		GaussianBlur(grayImage1, grayImage1, Size(5, 5), 0.5);					// 가우시안블러 처리
-		absdiff(grayImage1, grayImage2, diffImage1);							// 그레이이미지들 간의 차이를 저장
+		cvtColor(frame, grayImage1, COLOR_BGR2GRAY);				// 그레이스케일로 변환
+		cvtColor(next_frame, grayImage2, COLOR_BGR2GRAY);			// 그레이스케일로 변환
+		GaussianBlur(grayImage1, grayImage1, Size(5, 5), 0.5);			// 가우시안블러 처리
+		absdiff(grayImage1, grayImage2, diffImage1);				// 그레이이미지들 간의 차이를 저장
 		threshold(diffImage1, resultImage1, nThreshold1, 255, THRESH_BINARY);	// 임계값에 의한 의진화 처리
 
 		diffImage1.setTo(0);
