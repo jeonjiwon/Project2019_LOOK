@@ -119,7 +119,7 @@ int main() {
 			if (movecnt < 30) {
 
 				record = !record;	// 녹화 상태 변환
-				cap = !cap;			// 캡쳐 상태 변환
+				cap = !cap;		// 캡쳐 상태 변환
 				check = !check;		// 확인 상태 변환
 				timecnt = 0;		// 타이머 초기화
 
