@@ -28,9 +28,9 @@ const string currentDateTime() {
 
 int main() {
 
-	bool record		= false;	// 녹화 상태
-	bool cap		= false;	// 캡쳐 상태
-	bool check		= false;	// 확인 상태
+	bool record	= false;	// 녹화 상태
+	bool cap	= false;	// 캡쳐 상태
+	bool check	= false;	// 확인 상태
 
 	VideoCapture capture(0);	// 카메라 연결 번호
 
