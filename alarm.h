@@ -1,0 +1,106 @@
+﻿#pragma once
+#define WIN32_LEAN_AND_MEAN
+
+#include <windows.h> // Windows 헤더 파일
+#include <tchar.h>  // _T 매크로 헤더 파일
+
+// 함수 및 기타 정의 -->
+typedef int(__stdcall* MSGBOXAAPI)(IN HWND hWnd, IN LPCSTR lpText, IN LPCSTR lpCaption, IN UINT uType, IN WORD wLanguageId, IN DWORD dwMilliseconds);
+typedef int(__stdcall* MSGBOXWAPI)(IN HWND hWnd, IN LPCWSTR lpText, IN LPCWSTR lpCaption, IN UINT uType, IN WORD wLanguageId, IN DWORD dwMilliseconds);
+
+int MessageBoxTimeoutA(IN HWND hWnd, IN LPCSTR lpText, IN LPCSTR lpCaption, IN UINT uType, IN WORD wLanguageId, IN DWORD dwMilliseconds);
+int MessageBoxTimeoutW(IN HWND hWnd, IN LPCWSTR lpText, IN LPCWSTR lpCaption, IN UINT uType, IN WORD wLanguageId, IN DWORD dwMilliseconds);
+
+#ifdef UNICODE
+#define MessageBoxTimeout  MessageBoxTimeoutW  //MessageBoxTimeout을 두가지 타입으로 나눔
+#else                                         // MessageBoxTimeoutA 함수를 사용하기 위해서는 library를 읽어와서 함수 포인터를 연결해 주어야 함
+#define MessageBoxTimeout  MessageBoxTimeoutA
+#endif 
+
+#define MB_TIMEDOUT 32000   //반환값이 보통 메세지 박스와 같으나, 시간이 경과하여 자동으로 사라질 경우에는 OK 버튼일 경우 1을 넘겨주고
+                           //YES or NO 선택형일 경우 MB_TIMEDOUT (= 32000) 을 넘겨줌
+
+
+// MessageBoxTimeoutA 함수를 사용하기 위해서는 library를 읽어와서 함수 포인터를 연결해 주어야 함
+int MessageBoxTimeoutA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType, WORD wLanguageId, DWORD dwMilliseconds)
+{
+	static MSGBOXAAPI MsgBoxTOA = NULL;
+
+	if (!MsgBoxTOA)
+	{
+		HMODULE hUser32 = GetModuleHandle(_T("user32.dll"));  //user32.dll에 스스로 사라지는 MessageBox 함수가 포함됨
+
+		if (hUser32)  //이 함수를 읽어와서 함수 포인터를 연결해 준다.
+		{
+			MsgBoxTOA = (MSGBOXAAPI)GetProcAddress(hUser32, "MessageBoxTimeoutA");
+			// 'if (MsgBoxTOA) ...'로 넘어감
+		}
+		else
+		{
+			//문제 발생 시 코드 추가하여 처리하기. MessageBox() 호출 가능
+			return 0;
+		}
+	}
+
+	if (MsgBoxTOA)
+	{
+		return MsgBoxTOA(hWnd, lpText, lpCaption, uType, wLanguageId, dwMilliseconds);
+	}
+
+	return 0;
+}
+
+// 위와 문자 자료형을 제외하고 이하동문
+int MessageBoxTimeoutW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType, WORD wLanguageId, DWORD dwMilliseconds)
+{
+	static MSGBOXWAPI MsgBoxTOW = NULL;
+
+	if (!MsgBoxTOW)
+	{
+		HMODULE hUser32 = GetModuleHandle(_T("user32.dll"));
+		if (hUser32)
+		{
+			MsgBoxTOW = (MSGBOXWAPI)GetProcAddress(hUser32, "MessageBoxTimeoutW");
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
+	if (MsgBoxTOW)
+	{
+		return MsgBoxTOW(hWnd, lpText, lpCaption, uType, wLanguageId, dwMilliseconds);
+	}
+
+	return 0;
+}
+// 필요한 정의 끝 <--
+
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+	UNREFERENCED_PARAMETER(hInstance);
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
+	UNREFERENCED_PARAMETER(nCmdShow);
+
+	HMODULE hUser32 = LoadLibrary(_T("user32.dll"));
+
+	if (hUser32) // 실제 사용 예시
+	{
+		int iRet = 0;
+
+		iRet = MessageBoxTimeout(NULL, _T("Test a timeout of 2 seconds."), _T("MessageBoxTimeout Test"), MB_OK | MB_SETFOREGROUND | MB_SYSTEMMODAL | MB_ICONINFORMATION, 0, 2000);
+		//iRet = 1이 된다.
+
+		//iRet = MessageBoxTimeout(NULL, _T("Test a timeout of 5 seconds."), _T("MessageBoxTimeout Test"), MB_YESNO | MB_SETFOREGROUND | MB_SYSTEMMODAL | MB_ICONINFORMATION, 0, 5000);
+		//버튼을 누르지 않으면 iRet = MB_TIMEDOUT이 된다.
+
+		//MessageBoxTimeout 기능이 필요 없는 경우에만 user32.dll을 unload 함
+		FreeLibrary(hUser32);
+	}
+
+	return 0;
+}
+
+
