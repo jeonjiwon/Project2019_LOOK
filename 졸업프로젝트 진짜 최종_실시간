@@ -1,0 +1,323 @@
+#pragma once
+#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <time.h>
+#include "alarm.h"
+
+using namespace std;
+using namespace cv;
+
+#define FONTFACE FONT_HERSHEY_COMPLEX_SMALL
+#define DELAY 30
+#define OUTPUTTIME "%Y.%m.%d.%H.%M.%S"
+#define VIDEOFOEMAT ".mp4v"
+#define EXTEN 'M', 'P', 'E', 'G'
+#define nThreshold 50
+#define WIN32_LEAN_AND_MEAN
+
+// 현재 시간을 나타내는 함수
+const string currentDateTime() {
+
+	time_t     now = time(NULL);
+	struct tm  t;
+	char       buf[80];
+
+	localtime_s(&t, &now);
+	strftime(buf, sizeof(buf), OUTPUTTIME, &t);
+
+	return buf;
+}
+
+// Color conversion function
+// 그레이스케일로 변환
+Mat rgb2Gray(Mat img) {
+
+	Mat gray;
+
+	cvtColor(img, gray, COLOR_BGR2GRAY);
+
+	return gray;
+}
+
+// Gaussian Blur function
+// 가우시안블러 처리
+Mat gaussianBlur(Mat img) {
+
+	Mat blur;
+
+	GaussianBlur(img, blur, Size(5, 5), 0.5);
+
+	return blur;
+}
+
+// Calculate absolute value function
+// 두 이미지 간의 절대값 차이를 저장
+// 값이 작을 수록 변화가 없는 화소이며 값이 크면 클수록 두 이미지 사이의 차이가 크게 일어난 화소
+Mat absDiff(Mat img1, Mat img2) {
+
+	Mat diff;
+
+	absdiff(img1, img2, diff);
+
+	return diff;
+}
+
+// Color binarization function
+// 임계값에 의한 이진화 처리
+// 임계값 이상인 화소는 255, 임계값 이하인 화소는 0으로 저장
+Mat binarization(Mat img) {
+
+	Mat bin;
+
+	threshold(img, bin, nThreshold, 255, THRESH_BINARY);
+
+	return bin;
+}
+
+// Image processing function
+// 움직임 감지 및 물건 변화 확인을 위한 영상처리 과정
+Mat processing(Mat img1, Mat img2) {
+
+	Mat grayImage1, grayImage2;
+	Mat blurImage1, blurImage2;
+	Mat diffImage;
+	Mat binaryImage;
+
+	grayImage1 = rgb2Gray(img1);
+	grayImage2 = rgb2Gray(img2);
+	blurImage1 = gaussianBlur(grayImage1);
+	blurImage2 = gaussianBlur(grayImage2);
+	diffImage = absDiff(blurImage1, blurImage2);
+	binaryImage = binarization(diffImage);
+
+	return binaryImage;
+}
+
+int main() {
+
+	long start_time;				// 감지를 위한 타이머 변수 설정
+	long end_time;					// 종료를 위한 타이머 변수 설정
+
+	int zero_cnt;
+	int n_zero_cnt;
+
+	const int SENSING_LIMIT = 10;	// 감지 인지 시간
+	const int ENDTIME_LIMIT = 5;	// 종료 제한 시간
+	const char uiFlags = MB_OK | MB_SETFOREGROUND | MB_SYSTEMMODAL | MB_ICONINFORMATION;
+
+	bool record		= false;		// 녹화 상태
+	bool cap		= false;		// 캡쳐 상태
+	bool end		= false;		// 종료 상태
+	bool check		= false;		// 확인 상태
+
+	VideoCapture capture(1);	// 카메라 연결 번호
+
+	// 카메라 연결에 문제가 생겼을 때
+	if (!capture.isOpened()) {
+
+		cout << "Can not open capture!!" << endl;
+
+		return 0;
+	}
+
+	Size size = Size((int)capture.get(CAP_PROP_FRAME_WIDTH) / 4, (int)capture.get(CAP_PROP_FRAME_HEIGHT) / 4);
+	//int fps	= (int)(capture.get(CAP_PROP_FPS));
+	int fps = 30;
+
+	cout << "Size = " << size << endl;
+	cout << "fps = " << fps << endl;
+	cout << endl;
+
+	imshow("frame", NULL);
+	waitKey(100);
+
+	Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5)); // MORPH_ELLIPSE
+	Mat frame, next_frame;										// 영상 촬영 및 움직임 감지를 위한 프레임 객체 선언
+	Mat prev_frame, post_frame;									// 물체의 변화 감지를 위한 프레임 객체 선언
+	Mat resultImage1, resultImage2;								// 프레임 간 영상처리 결과를 저장하기 위한 프레임 객체 선언
+	Mat temp;													// 프레임 간에 교환을 위한 임시 프레임 객체 선언
+
+	capture.read(prev_frame);	// 배경이 될 프레임을 카메라카 켜지면 바로 저장
+
+	namedWindow("frame", WINDOW_AUTOSIZE);
+
+	int fourcc = VideoWriter::fourcc(EXTEN);
+
+	VideoWriter outputVideo;
+
+	//파일입출력
+	FILE * fp = fopen("situation record.txt", "at");
+	//FILE * fp = fopen("situation record.txt", "wt");  //새로 파일 덮어쓰기
+
+	if (fp == NULL) {
+		puts("can not open file");
+		return -1;
+	}
+
+	while (capture.isOpened()) {
+
+		string text = currentDateTime();
+
+		capture >> frame;
+		capture >> next_frame;
+
+		if (frame.empty())
+			break;
+		
+		// 영상처리를 한 결과 저장
+		resultImage1 = processing(frame, next_frame);
+
+		// 움직임 감지를 위해 변화하는 픽셀 수 체크
+		int move_cnt = countNonZero(resultImage1);
+
+		putText(frame, text, Point(20, capture.get(CAP_PROP_FRAME_HEIGHT) - 20), FONTFACE, 1, Scalar(255, 255, 255));
+
+		// 움직임이 감지되었을 때
+		if (move_cnt >= 50 && record == false) {
+
+			record		= !record;		// 녹화 상태 변환
+			end			= false;		// 종료 상태 아님
+			start_time	= time(NULL);	// 시작시간 저장
+
+			zero_cnt	= 0;
+			n_zero_cnt	= 0;
+
+			//outputVideo.open(text + VIDEOFOEMAT, fourcc, 24, size, true);	// 영상을 저장
+			cout << text << " 움직임 감지" << endl;
+			//cout << "move_cnt : " << move_cnt << endl;
+
+			string ment = "움직임 감지\n";
+			string message = text + ment;
+			//fputs(message.c_str(), fp);
+			fprintf(fp, message.c_str());
+		}
+
+		// 녹화 상태일 때
+		if (record) {
+
+			capture.read(frame);
+			if (frame.empty()) {
+				cerr << "error" << endl;
+				break;
+			}
+			//outputVideo.write(frame);
+
+			if (move_cnt == 0)
+				zero_cnt = zero_cnt + 1;
+			if (move_cnt != 0)
+				n_zero_cnt = n_zero_cnt + 1;
+
+			// 지정한 시간 이상동안 움직임이 감지되었을 때
+			if (time(NULL) >= (start_time + SENSING_LIMIT) && cap == false && n_zero_cnt >= 20) {
+
+				cap = !cap;	// 캡쳐 상태 변환
+
+				imwrite(text + " 거수자 감지.png", frame);	// 거수자 캡쳐, 저장
+				cout << text << " 거수자 감지" << endl;
+				putText(frame, "Suspicious person detected.", Point(20, capture.get(CAP_PROP_FRAME_HEIGHT) - 50), FONT_HERSHEY_DUPLEX, 0.6, Scalar(255, 0, 0));
+				imshow("거수자 감지", frame);
+
+				string ment = "거수자 감지\n";
+				string message = text + ment;
+				//fputs(message.c_str(), fp);
+				fprintf(fp, message.c_str());
+
+				// 알림창 발생
+				MessageBoxTimeout(NULL, _T("거수자 감지"), _T("알림"), uiFlags, 0, 1500);	// 자동 종료되는 타이머 알람 설정
+			}
+
+			// 움직임이 없을 때
+			if (zero_cnt > 15) {
+
+				if (end == false) {
+
+					end			= !end;
+					end_time	= time(NULL);	// 종료시간 저장
+				}
+
+				// 지정한 시간 이상동안 움직임이 없을 때
+				if (time(NULL) >= end_time + ENDTIME_LIMIT) {
+
+					// 녹화가 끝났으므로 check를 제회한 모든 상태변환 처음으로 변환
+					// check는 물체의 변화를 확인하기 위한 변수
+					record		= !record;	// 녹화 상태 변환
+					cap			= !cap;		// 캡쳐 상태 변환
+					end			= !end;		// 종료 상태 변환
+					check		= !check;	// 확인 상태 변환
+
+					capture.read(post_frame);	// 전경이 될 프레임을 움직임이 없으면 저장
+					//outputVideo.release();
+					cout << text << " 움직임 없음" << endl;
+					//cout << "move_cnt : " << move_cnt << endl;
+
+					string ment = "움직임 없음\n";
+					string message = text + ment;
+					//fputs(message.c_str(), fp);
+					fprintf(fp, message.c_str());
+				}
+				
+			}
+
+			//outputVideo << frame;
+		}
+
+		// 움직임이 감지되고 끝났을 때
+		if (check) {
+
+			check = !check;
+
+			// 영상처리를 한 결과 저장
+			resultImage2 = processing(prev_frame, post_frame);
+
+			// 물체 변화 확인을 위해 변화하는 픽셀 수 체크
+			int check_cnt = countNonZero(resultImage2);
+
+			// 물건의 유무를 확인
+			// 변화가 생겼을 때
+			if (check_cnt > 200) {
+
+				cout << "물건 변화" << endl;
+				//cout << "check_cnt : " << check_cnt << endl;
+				cout << endl;
+				putText(frame, "Change of things", Point(20, capture.get(CAP_PROP_FRAME_HEIGHT) - 50), FONT_HERSHEY_DUPLEX, 0.6, Scalar(255, 0, 0));
+				imshow("물건 변화", frame);
+
+				string ment = "물건 변화\n";
+				string message = text + ment;
+				//fputs(message.c_str(), fp);
+				fprintf(fp, message.c_str());
+
+				// 알림창 발생
+				MessageBoxTimeout(NULL, _T("물건 변화"), _T("알림"), uiFlags, 0, 1500);	// 자동 종료되는 타이머 알람 설정
+
+				imshow("prev_frame", prev_frame);
+				//imshow("post_frame", post_frame);
+				// 물체의 변화가 생겼으면 전경을 후경으로 교체
+				temp		= prev_frame;
+				prev_frame	= post_frame;
+				post_frame	= temp;
+			}
+
+			// 변화가 없을 때
+			else {
+
+				cout << "물건 변화 없음" << endl;
+				//cout << "check_cnt : " << check_cnt << endl;
+				cout << endl;
+
+				string ment = "물건 변화 없음\n";
+				string message = text + ment;
+				//fputs(message.c_str(), fp);
+				fprintf(fp, message.c_str());
+			}
+		}
+
+		imshow("frame", frame);
+
+		// ESC 키를 누르면 종료
+		if (waitKey(DELAY) == 27)
+			break;
+	}
+
+	return 0;
+}
